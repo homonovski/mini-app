@@ -577,6 +577,23 @@ async def admin_delete_promo(pid: int, request: Request):
     conn.close()
     return {'ok': True}
 
+@app.get('/api/admin/reviews')
+async def admin_reviews(request: Request):
+    await require_admin(request)
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM reviews ORDER BY created_at DESC').fetchall()
+    conn.close()
+    return {'reviews': [dict(r) for r in rows]}
+
+@app.delete('/api/admin/reviews/{rid}')
+async def admin_delete_review(rid: int, request: Request):
+    await require_admin(request)
+    conn = get_db()
+    conn.execute('DELETE FROM reviews WHERE id=?', (rid,))
+    conn.commit()
+    conn.close()
+    return {'ok': True}
+
 @app.get('/api/admin/users')
 async def admin_users(request: Request):
     await require_admin(request)
