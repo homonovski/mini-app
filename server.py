@@ -93,6 +93,14 @@ def init_db():
             qty INTEGER,
             delivery TEXT DEFAULT ''
         );
+        CREATE TABLE IF NOT EXISTS reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            user_name TEXT DEFAULT '',
+            text TEXT NOT NULL,
+            rating INTEGER DEFAULT 5,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
         CREATE TABLE IF NOT EXISTS promos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             code TEXT UNIQUE NOT NULL,
@@ -345,6 +353,33 @@ async def my_orders(request: Request):
         })
     conn.close()
     return {'orders': result}
+
+# ============================================================
+# Reviews
+# ============================================================
+
+@app.get('/api/reviews')
+async def get_reviews():
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM reviews ORDER BY created_at DESC').fetchall()
+    conn.close()
+    return {'reviews': [dict(r) for r in rows]}
+
+@app.post('/api/reviews')
+async def create_review(body: dict, request: Request):
+    user_data = await get_user(request)
+    uid = user_data.get('id', 0)
+    text = body.get('text', '').strip()
+    if not text:
+        raise HTTPException(400, 'Текст отзыва не может быть пустым')
+    rating = min(max(int(body.get('rating', 5)), 1), 5)
+    name = user_data.get('first_name', '') or 'Аноним'
+    conn = get_db()
+    conn.execute('INSERT INTO reviews (user_id, user_name, text, rating) VALUES (?,?,?,?)',
+                 (uid, name, text, rating))
+    conn.commit()
+    conn.close()
+    return {'ok': True}
 
 # ============================================================
 # Admin
