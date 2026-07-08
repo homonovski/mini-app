@@ -552,14 +552,11 @@ const Admin = {
       try {
         const d = await this.api('GET', '/reviews');
         reviews = d.reviews || [];
-      } catch (e) { /* ignore */ }
+      } catch (e) { /* server недоступен */ }
     }
-    const saved = localStorage.getItem('hm_reviews');
-    if (saved) {
-      try {
-        const local = JSON.parse(saved);
-        if (local.length > reviews.length) reviews = local;
-      } catch (e) {}
+    if (!reviews.length) {
+      const saved = localStorage.getItem('hm_reviews');
+      if (saved) { try { reviews = JSON.parse(saved); } catch (e) {} }
     }
     $('#adminBody').innerHTML = reviews.length ? reviews.map(r => `
       <div class="admin-row">
