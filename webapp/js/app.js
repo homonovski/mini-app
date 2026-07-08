@@ -567,14 +567,11 @@ async function renderReviews() {
     try {
       const data = await API.get('/api/reviews');
       reviews = data.reviews || [];
-    } catch (e) { /* ignore */ }
+    } catch (e) { /* server недоступен */ }
   }
-  const saved = localStorage.getItem('hm_reviews');
-  if (saved) {
-    try {
-      const local = JSON.parse(saved);
-      if (local.length > reviews.length) reviews = local;
-    } catch (e) {}
+  if (!reviews.length) {
+    const saved = localStorage.getItem('hm_reviews');
+    if (saved) { try { reviews = JSON.parse(saved); } catch (e) {} }
   }
 
   const list = $('#reviewsList');
