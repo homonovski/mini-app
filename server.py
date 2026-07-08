@@ -368,7 +368,6 @@ async def admin_overview(request: Request):
     products_count = conn.execute("SELECT COUNT(*) FROM products WHERE active=1").fetchone()[0]
     top = conn.execute("SELECT * FROM products WHERE sales>0 ORDER BY sales DESC LIMIT 5").fetchall()
     recent = conn.execute("SELECT * FROM orders ORDER BY created_at DESC LIMIT 10").fetchall()
-    conn.close()
     recent_list = []
     for o in recent:
         items = conn.execute("SELECT * FROM order_items WHERE order_id=?", (o['id'],)).fetchall()
@@ -377,6 +376,7 @@ async def admin_overview(request: Request):
             'status': o['status'], 'created_at': o['created_at'],
             'username': '', 'items': [{'name': i['name']} for i in items],
         })
+    conn.close()
     return {
         'revenue_total': revenue, 'revenue_today': rev_today,
         'orders_paid': orders_paid, 'orders_pending': orders_pending,
