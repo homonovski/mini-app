@@ -919,6 +919,50 @@ img.ic:not([src]) { opacity: 0; }
       0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
+/* ---------- Отзывы ---------- */
+
+.review-card {
+  background: var(--glass-bg);
+  border: 1px solid rgba(255,255,255,0.04);
+  box-shadow: var(--glass-shadow);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 10px;
+  animation: fadeUp .35s cubic-bezier(.22,.9,.3,1.1) backwards;
+}
+.rc-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 10px;
+}
+.rc-avatar {
+  width: 38px; height: 38px; border-radius: 12px;
+  background: var(--acc); color: #000;
+  font-family: var(--font-display); font-weight: 700; font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.rc-name { font-weight: 600; font-size: 13.5px; }
+.rc-date { font-size: 11px; color: var(--dim); margin-top: 1px; }
+.rc-stars { margin-left: auto; display: flex; gap: 2px; flex-shrink: 0; }
+.rc-text { font-size: 13.5px; color: #c9c9c9; line-height: 1.5; }
+.star { font-size: 15px; color: var(--dim); }
+.star.filled { color: var(--acc); }
+
+.rating-select {
+  display: flex; gap: 6px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px 14px;
+}
+.star-rating {
+  font-size: 28px; cursor: pointer; color: var(--dim);
+  transition: transform .15s, color .15s;
+  user-select: none;
+}
+.star-rating:hover { transform: scale(1.15); }
+.star-rating.filled { color: var(--acc); }
+
 /* плавающая навигация стала выше — сдвигаем контент и FAB */
 #views {
   padding-bottom: calc(var(--nav-h) + 48px);
