@@ -136,6 +136,13 @@ function loadCart() {
   catch (e) { state.cart = []; }
 }
 
+function cleanCart() {
+  if (!state.products.length) return;
+  const before = state.cart.length;
+  state.cart = state.cart.filter(i => state.products.some(p => p.id === i.id));
+  if (state.cart.length !== before) saveCart();
+}
+
 function saveCart() {
   localStorage.setItem(cartKey(), JSON.stringify(state.cart));
   updateNavDot();
@@ -408,6 +415,7 @@ function afterPaid(order) {
 /* ---------- корзина ---------- */
 
 function renderCart() {
+  cleanCart();
   const view = $('#view-cart');
   if (!state.cart.length) {
     view.innerHTML = `
@@ -803,6 +811,7 @@ async function refreshShop() {
       } catch (e) {}
     }
     state.categories.forEach(c => c.count = state.products.filter(p => p.category_id === c.id).length);
+    cleanCart();
     applyBranding();
     if (state.view === 'home') renderHome();
     return;
@@ -812,6 +821,7 @@ async function refreshShop() {
     state.categories = shop.categories;
     state.products = shop.products;
     state.settings = shop.settings;
+    cleanCart();
     applyBranding();
     if (state.view === 'home') renderHome();
   } catch (e) {
@@ -829,6 +839,7 @@ function loadSeedData() {
         state.categories = data.cats || [];
         const s = localStorage.getItem('hm_settings');
         if (s) Object.assign(state.settings, JSON.parse(s));
+        cleanCart();
         return;
       }
     } catch (e) {}
@@ -842,6 +853,7 @@ function loadSeedData() {
   if (s) {
     state.settings = { ...state.settings, ...JSON.parse(s) };
   }
+  cleanCart();
 }
 
 function applyBranding() {
