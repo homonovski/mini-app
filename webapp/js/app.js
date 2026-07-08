@@ -562,17 +562,26 @@ async function renderReviews() {
     <button class="btn mt16" id="addReviewBtn">${icDark('message-square-plus', 17)} Оставить отзыв</button>
   `;
 
-  let reviews = [];
+  let publicReviews = [];
+  let myReviews = [];
   if (!state.offline) {
     try {
       const data = await API.get('/api/reviews');
-      reviews = data.reviews || [];
+      publicReviews = data.reviews || [];
     } catch (e) { /* server недоступен */ }
+    try {
+      const data = await API.get('/api/my/reviews');
+      myReviews = data.reviews || [];
+    } catch (e) { /* ignore */ }
   }
-  if (!reviews.length) {
+  if (!publicReviews.length && !myReviews.length) {
     const saved = localStorage.getItem('hm_reviews');
-    if (saved) { try { reviews = JSON.parse(saved); } catch (e) {} }
+    if (saved) { try { publicReviews = JSON.parse(saved); } catch (e) {} }
   }
+  const myIds = new Set(myReviews.filter(r => r.status === 'deleted').map(r => r.id));
+  const reviews = publicReviews.map(r => ({ ...r, _mine: false, _deleted: false }))
+    .concat(myReviews.filter(r => r.status === 'deleted').map(r => ({ ...r, _mine: true, _deleted: true })))
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   const list = $('#reviewsList');
   if (!reviews.length) {
@@ -583,7 +592,7 @@ async function renderReviews() {
       </div>`;
   } else {
     list.innerHTML = reviews.map((r, i) => `
-      <div class="review-card" style="animation-delay:${i * .05}s">
+      <div class="review-card ${r._deleted ? 'review-deleted' : ''}" style="animation-delay:${i * .05}s">
         <div class="rc-head">
           <div class="rc-avatar">${esc((r.user_name || 'A').slice(0, 1).toUpperCase())}</div>
           <div>
@@ -593,6 +602,7 @@ async function renderReviews() {
           <div class="rc-stars">${starsHTML(r.rating)}</div>
         </div>
         <div class="rc-text">${esc(r.text)}</div>
+        ${r._deleted ? '<div class="rc-deleted-note">✕ Отзыв скрыт администратором</div>' : ''}
       </div>`).join('');
   }
 
@@ -634,9 +644,11 @@ async function renderReviews() {
         }
         const r = {
           id: Date.now(),
+          user_id: state.user?.id || 0,
           user_name: state.user?.first_name || 'Аноним',
           text,
           rating,
+          status: 'active',
           created_at: new Date().toISOString(),
         };
         const saved = localStorage.getItem('hm_reviews');
