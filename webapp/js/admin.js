@@ -7,6 +7,7 @@ const Admin = {
     { id: 'cats', icon: 'folder', label: 'Категории' },
     { id: 'orders', icon: 'receipt', label: 'Заказы' },
     { id: 'promos', icon: 'ticket-percent', label: 'Промо' },
+    { id: 'reviews', icon: 'message-square', label: 'Отзывы' },
     { id: 'users', icon: 'users-round', label: 'Юзеры' },
     { id: 'settings', icon: 'settings-2', label: 'Настройки' },
   ],
@@ -107,6 +108,7 @@ const Admin = {
       cats: () => this._tabCats(),
       orders: () => this._tabOrders(),
       promos: () => this._tabPromos(),
+      reviews: () => this._tabReviews(),
       users: () => this._tabUsers(),
       settings: () => this._tabSettings(),
     };
@@ -536,6 +538,53 @@ const Admin = {
           this._promos = this._promos.filter(p => p.id !== id);
           this._saveLocal();
         }
+        this.render();
+      });
+    });
+  },
+
+  /* ---------- отзывы ---------- */
+
+  async _tabReviews() {
+    await this.ensureData();
+    let reviews = [];
+    if (this.isOnline()) {
+      try {
+        const d = await this.api('GET', '/reviews');
+        reviews = d.reviews || [];
+      } catch (e) { /* ignore */ }
+    }
+    const saved = localStorage.getItem('hm_reviews');
+    if (saved) {
+      try {
+        const local = JSON.parse(saved);
+        if (local.length > reviews.length) reviews = local;
+      } catch (e) {}
+    }
+    $('#adminBody').innerHTML = reviews.length ? reviews.map(r => `
+      <div class="admin-row">
+        <div class="ar-icon">${ic('message-square', 19)}</div>
+        <div class="ar-main">
+          <div class="ar-title">${esc(r.user_name || 'Аноним')} ${starsHTML(r.rating)}</div>
+          <div class="ar-sub">${esc(r.text)} · ${new Date(r.created_at).toLocaleString('ru-RU')}</div>
+        </div>
+        <div class="ar-actions">
+          <button class="icon-btn" data-del="${r.id}">${ic('trash-2', 15)}</button>
+        </div>
+      </div>`).join('')
+      : `<div class="empty"><div class="empty-icon">${icMuted('message-square', 32)}</div><div class="empty-text">Отзывов пока нет</div></div>`;
+    document.querySelectorAll('[data-del]').forEach(b => {
+      b.onclick = () => confirmDialog('Удалить отзыв?', async () => {
+        const id = Number(b.dataset.del);
+        if (this.isOnline()) {
+          try { await this.api('DELETE', '/reviews/' + id); } catch (e) { toast(e.message, true); return; }
+        }
+        const saved = localStorage.getItem('hm_reviews');
+        if (saved) {
+          const all = JSON.parse(saved).filter(x => x.id !== id);
+          localStorage.setItem('hm_reviews', JSON.stringify(all));
+        }
+        toast('Отзыв удалён');
         this.render();
       });
     });
