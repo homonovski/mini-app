@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, unquote
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 
 load_dotenv()
 
@@ -635,16 +635,24 @@ async def admin_save_settings(body: dict, request: Request):
 # Static files (Mini App frontend)
 # ============================================================
 
+CACHE_EXTS = {'.html', '.css', '.js'}
+
 @app.middleware('http')
 async def static_or_spa(request, call_next):
     path = request.url.path
     if path.startswith('/api/'):
         return await call_next(request)
     if path == '/' or not path:
-        return FileResponse(os.path.join(BASE_DIR, 'webapp', 'index.html'))
+        resp = FileResponse(os.path.join(BASE_DIR, 'webapp', 'index.html'))
+        resp.headers['Cache-Control'] = 'no-cache'
+        return resp
     full = os.path.join(BASE_DIR, 'webapp', path.lstrip('/'))
     if os.path.isfile(full):
-        return FileResponse(full)
+        resp = FileResponse(full)
+        _, ext = os.path.splitext(full)
+        if ext.lower() in CACHE_EXTS:
+            resp.headers['Cache-Control'] = 'no-cache'
+        return resp
     return FileResponse(os.path.join(BASE_DIR, 'webapp', 'index.html'))
 
 # ============================================================
