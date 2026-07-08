@@ -559,31 +559,28 @@ const Admin = {
       if (saved) { try { reviews = JSON.parse(saved); } catch (e) {} }
     }
     $('#adminBody').innerHTML = reviews.length ? reviews.map(r => `
-      <div class="admin-row">
+      <div class="admin-row ${r.status === 'deleted' ? 'inactive-row' : ''}">
         <div class="ar-icon">${ic('message-square', 19)}</div>
         <div class="ar-main">
-          <div class="ar-title">${esc(r.user_name || 'Аноним')} ${starsHTML(r.rating)}</div>
+          <div class="ar-title">${esc(r.user_name || 'Аноним')} ${starsHTML(r.rating)} ${r.status === 'deleted' ? '<span class="deleted-badge">СКРЫТ</span>' : ''}</div>
           <div class="ar-sub">${esc(r.text)} · ${new Date(r.created_at).toLocaleString('ru-RU')}</div>
         </div>
         <div class="ar-actions">
-          <button class="icon-btn" data-del="${r.id}">${ic('trash-2', 15)}</button>
+          <button class="icon-btn" data-toggle="${r.id}" data-status="${r.status}">${ic(r.status === 'deleted' ? 'eye' : 'eye-off', 15)}</button>
         </div>
       </div>`).join('')
       : `<div class="empty"><div class="empty-icon">${icMuted('message-square', 32)}</div><div class="empty-text">Отзывов пока нет</div></div>`;
-    document.querySelectorAll('[data-del]').forEach(b => {
-      b.onclick = () => confirmDialog('Удалить отзыв?', async () => {
-        const id = Number(b.dataset.del);
+    document.querySelectorAll('[data-toggle]').forEach(b => {
+      b.onclick = async () => {
+        const id = Number(b.dataset.toggle);
         if (this.isOnline()) {
-          try { await this.api('DELETE', '/reviews/' + id); } catch (e) { toast(e.message, true); return; }
+          try {
+            const res = await this.api('POST', '/reviews/' + id + '/toggle');
+            toast(res.status === 'deleted' ? 'Отзыв скрыт' : 'Отзыв восстановлен');
+          } catch (e) { toast(e.message, true); return; }
         }
-        const saved = localStorage.getItem('hm_reviews');
-        if (saved) {
-          const all = JSON.parse(saved).filter(x => x.id !== id);
-          localStorage.setItem('hm_reviews', JSON.stringify(all));
-        }
-        toast('Отзыв удалён');
         this.render();
-      });
+      };
     });
   },
 
