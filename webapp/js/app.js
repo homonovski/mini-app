@@ -465,7 +465,6 @@ function renderCart() {
     ${state.offline
       ? `<button class="btn btn-ghost" id="orderViaSupport">${ic('message-circle', 17)} Написать @homonovski</button>`
       : `<button class="btn" id="checkoutBtn">${icDark('wallet', 17)} Оплатить</button>`}
-    <div class="center small muted mt8">Оплата криптовалютой: USDT, TON, BTC и др.</div>
   `;
 
   document.querySelectorAll('.cart-item').forEach((row) => {
