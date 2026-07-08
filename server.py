@@ -99,8 +99,10 @@ def init_db():
             user_name TEXT DEFAULT '',
             text TEXT NOT NULL,
             rating INTEGER DEFAULT 5,
+            status TEXT DEFAULT 'active',
             created_at TEXT DEFAULT (datetime('now'))
         );
+        CREATE INDEX IF NOT EXISTS idx_reviews_user_id ON reviews(user_id);
         CREATE TABLE IF NOT EXISTS promos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             code TEXT UNIQUE NOT NULL,
@@ -119,6 +121,15 @@ def init_db():
     conn.close()
 
 init_db()
+
+# Migration: add status column to reviews if missing
+conn = get_db()
+try:
+    conn.execute("ALTER TABLE reviews ADD COLUMN status TEXT DEFAULT 'active'")
+    conn.commit()
+except:
+    pass
+conn.close()
 
 # ============================================================
 # Telegram Auth
@@ -361,7 +372,16 @@ async def my_orders(request: Request):
 @app.get('/api/reviews')
 async def get_reviews():
     conn = get_db()
-    rows = conn.execute('SELECT * FROM reviews ORDER BY created_at DESC').fetchall()
+    rows = conn.execute("SELECT * FROM reviews WHERE status='active' ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return {'reviews': [dict(r) for r in rows]}
+
+@app.get('/api/my/reviews')
+async def get_my_reviews(request: Request):
+    user_data = await get_user(request)
+    uid = user_data.get('id', 0)
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM reviews WHERE user_id=? ORDER BY created_at DESC', (uid,)).fetchall()
     conn.close()
     return {'reviews': [dict(r) for r in rows]}
 
@@ -375,8 +395,8 @@ async def create_review(body: dict, request: Request):
     rating = min(max(int(body.get('rating', 5)), 1), 5)
     name = user_data.get('first_name', '') or 'Аноним'
     conn = get_db()
-    conn.execute('INSERT INTO reviews (user_id, user_name, text, rating) VALUES (?,?,?,?)',
-                 (uid, name, text, rating))
+    conn.execute('INSERT INTO reviews (user_id, user_name, text, rating, status) VALUES (?,?,?,?,?)',
+                 (uid, name, text, rating, 'active'))
     conn.commit()
     conn.close()
     return {'ok': True}
@@ -585,14 +605,19 @@ async def admin_reviews(request: Request):
     conn.close()
     return {'reviews': [dict(r) for r in rows]}
 
-@app.delete('/api/admin/reviews/{rid}')
-async def admin_delete_review(rid: int, request: Request):
+@app.post('/api/admin/reviews/{rid}/toggle')
+async def admin_toggle_review(rid: int, request: Request):
     await require_admin(request)
     conn = get_db()
-    conn.execute('DELETE FROM reviews WHERE id=?', (rid,))
+    r = conn.execute('SELECT * FROM reviews WHERE id=?', (rid,)).fetchone()
+    if not r:
+        conn.close()
+        raise HTTPException(404, 'Отзыв не найден')
+    new_status = 'deleted' if r['status'] == 'active' else 'active'
+    conn.execute('UPDATE reviews SET status=? WHERE id=?', (new_status, rid))
     conn.commit()
     conn.close()
-    return {'ok': True}
+    return {'ok': True, 'status': new_status}
 
 @app.get('/api/admin/users')
 async def admin_users(request: Request):
