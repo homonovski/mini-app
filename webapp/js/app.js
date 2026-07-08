@@ -163,6 +163,7 @@ function addToCart(productId, qty = 1) {
 
 const NAV = [
   { id: 'home', icon: 'store', label: 'Магазин' },
+  { id: 'reviews', icon: 'message-square', label: 'Отзывы' },
   { id: 'cart', icon: 'shopping-cart', label: 'Корзина' },
   { id: 'profile', icon: 'user-round', label: 'Профиль' },
   { id: 'admin', icon: 'shield-half', label: 'Админ', adminOnly: true },
@@ -195,6 +196,7 @@ function switchView(view) {
   renderNav();
   if (view === 'home') renderHome();
   if (view === 'cart') renderCart();
+  if (view === 'reviews') renderReviews();
   if (view === 'profile') renderProfile();
   if (view === 'admin' && state.isAdmin) Admin.render();
   window.scrollTo({ top: 0 });
@@ -542,6 +544,118 @@ function renderCart() {
       toast('Список скопирован — отправьте @homonovski');
     };
   }
+}
+
+/* ---------- отзывы ---------- */
+
+function starsHTML(rating) {
+  return Array.from({ length: 5 }, (_, i) =>
+    `<span class="star ${i < rating ? 'filled' : ''}">★</span>`
+  ).join('');
+}
+
+async function renderReviews() {
+  const view = $('#view-reviews');
+  view.innerHTML = `
+    <div class="section-title">Отзывы</div>
+    <div id="reviewsList"><div class="skeleton" style="height:74px;margin-bottom:9px"></div></div>
+    <button class="btn mt16" id="addReviewBtn">${icDark('message-square-plus', 17)} Оставить отзыв</button>
+  `;
+
+  let reviews = [];
+  if (!state.offline) {
+    try {
+      const data = await API.get('/api/reviews');
+      reviews = data.reviews || [];
+    } catch (e) { /* ignore */ }
+  }
+  const saved = localStorage.getItem('hm_reviews');
+  if (saved) {
+    try {
+      const local = JSON.parse(saved);
+      if (local.length > reviews.length) reviews = local;
+    } catch (e) {}
+  }
+
+  const list = $('#reviewsList');
+  if (!reviews.length) {
+    list.innerHTML = `
+      <div class="empty" style="padding:32px 20px">
+        <div class="empty-icon">${icMuted('message-square', 32)}</div>
+        <div class="empty-text">Отзывов пока нет — будьте первым!</div>
+      </div>`;
+  } else {
+    list.innerHTML = reviews.map((r, i) => `
+      <div class="review-card" style="animation-delay:${i * .05}s">
+        <div class="rc-head">
+          <div class="rc-avatar">${esc((r.user_name || 'A').slice(0, 1).toUpperCase())}</div>
+          <div>
+            <div class="rc-name">${esc(r.user_name || 'Аноним')}</div>
+            <div class="rc-date">${new Date(r.created_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+          </div>
+          <div class="rc-stars">${starsHTML(r.rating)}</div>
+        </div>
+        <div class="rc-text">${esc(r.text)}</div>
+      </div>`).join('');
+  }
+
+  $('#addReviewBtn').onclick = () => {
+    let rating = 5;
+    openSheet(`
+      <div class="sheet-title mb16">Оставить отзыв</div>
+      <div class="field">
+        <label>Оценка</label>
+        <div class="rating-select" id="ratingSelect">
+          ${[1,2,3,4,5].map(i => `<span class="star-rating" data-r="${i}">★</span>`).join('')}
+        </div>
+      </div>
+      <div class="field">
+        <label>Текст отзыва</label>
+        <textarea id="reviewText" rows="4" placeholder="Напишите, что вам понравилось…" style="font-family:var(--font-text)"></textarea>
+      </div>
+      <button class="btn" id="reviewSubmit">${icDark('send', 17)} Отправить</button>
+    `);
+
+    document.querySelectorAll('.star-rating').forEach(el => {
+      el.onclick = () => {
+        rating = Number(el.dataset.r);
+        document.querySelectorAll('.star-rating').forEach((s, idx) => {
+          s.classList.toggle('filled', idx < rating);
+        });
+      };
+    });
+    document.querySelectorAll('.star-rating').forEach((s, idx) => {
+      if (idx < rating) s.classList.add('filled');
+    });
+
+    $('#reviewSubmit').onclick = async () => {
+      const text = $('#reviewText').value.trim();
+      if (!text) { toast('Напишите текст отзыва', true); return; }
+      try {
+        if (!state.offline) {
+          await API.post('/api/reviews', { text, rating });
+        }
+        const r = {
+          id: Date.now(),
+          user_name: state.user?.first_name || 'Аноним',
+          text,
+          rating,
+          created_at: new Date().toISOString(),
+        };
+        const saved = localStorage.getItem('hm_reviews');
+        const all = saved ? JSON.parse(saved) : [];
+        all.unshift(r);
+        localStorage.setItem('hm_reviews', JSON.stringify(all));
+        haptic('success');
+        toast('Спасибо за отзыв!');
+        closeSheet();
+        renderReviews();
+      } catch (e) {
+        haptic('error');
+        toast(e.message, true);
+      }
+    };
+  };
 }
 
 /* ---------- профиль ---------- */
