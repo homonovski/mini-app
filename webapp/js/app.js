@@ -44,7 +44,6 @@ const state = {
   search: '',
   view: 'home',
   myOrders: [],
-  pollTimer: null,
   offline: false,
 };
 
@@ -332,30 +331,29 @@ async function buyNow(productId, qty) {
 }
 
 async function checkout(items, promoCode) {
-  if (state.offline) {
-    toast('Магазин работает в режиме просмотра. Для покупки напишите @homonovski', true);
-    return;
-  }
+  const support = (state.settings.support || '@homonovski').replace('@', '');
+  const itemList = items.map(i => {
+    const p = state.products.find(x => x.id === i.id);
+    return p ? `${p.name} ×${i.qty} = ${money(p.price * i.qty)}` : '';
+  }).join('\n');
+  const msg = `Здравствуйте! Хочу заказать:\n${itemList}`;
   openSheet(`
-    <div class="pay-wait">
-      <div class="spinner"></div>
-      <div class="sheet-title">Создаём счёт…</div>
-      <div class="muted small">Crypto Pay · @CryptoBot</div>
+    <div class="pay-wait" style="padding:22px 6px 10px">
+      <div class="empty-icon" style="margin:0 auto">${icMuted('message-circle', 36)}</div>
+      <div class="sheet-title">Оплата временно недоступна</div>
+      <div class="muted small" style="max-width:280px">Напишите в поддержку — вам помогут оформить заказ</div>
+      <button class="btn" id="paySupport">${icDark('send', 17)} Написать @${support}</button>
+      <button class="btn btn-ghost btn-sm" id="paySupportCancel">Закрыть</button>
     </div>`);
-  let order;
-  try {
-    order = await API.post('/api/orders', { items, promo: promoCode });
-  } catch (e) {
+  haptic('warning');
+  $('#paySupport').onclick = () => {
+    copyText(msg);
+    openPayUrl('https://t.me/' + support);
+    haptic('medium');
+    toast('Сообщение скопировано');
     closeSheet();
-    haptic('error');
-    toast(e.message, true);
-    return;
-  }
-  if (order.status === 'paid') {
-    afterPaid(order);
-    return;
-  }
-  showPaymentSheet(order);
+  };
+  $('#paySupportCancel').onclick = closeSheet;
 }
 
 function openPayUrl(url) {
@@ -365,44 +363,7 @@ function openPayUrl(url) {
   window.open(url, '_blank');
 }
 
-function showPaymentSheet(order) {
-  openSheet(`
-    <div class="pay-wait">
-      <div class="spinner"></div>
-      <div class="sheet-title">Ожидаем оплату</div>
-      <div class="muted small">Заказ <span class="mono">#${order.id}</span> · ${money(order.total)}<br>
-      Счёт действителен 30 минут</div>
-      <button class="btn" id="payOpen">${icDark('wallet', 17)} Открыть счёт CryptoBot</button>
-      <button class="btn btn-ghost btn-sm" id="payLater">Оплачу позже — заказ сохранён в профиле</button>
-    </div>`,
-    () => stopPolling());
-  $('#payOpen').onclick = () => { haptic('medium'); openPayUrl(order.pay_url); };
-  $('#payLater').onclick = () => { closeSheet(); switchView('profile'); };
-  openPayUrl(order.pay_url);
-  startPolling(order.id);
-}
 
-function stopPolling() {
-  if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
-}
-
-function startPolling(orderId) {
-  stopPolling();
-  state.pollTimer = setInterval(async () => {
-    let order;
-    try { order = await API.get('/api/orders/' + orderId); }
-    catch (e) { return; }
-    if (order.status === 'paid') {
-      stopPolling();
-      afterPaid(order);
-    } else if (order.status === 'expired') {
-      stopPolling();
-      closeSheet();
-      haptic('warning');
-      toast('Счёт истёк — оформите заказ заново', true);
-    }
-  }, 3000);
-}
 
 function deliveryBlock(order) {
   if (!order.delivery) return '';
@@ -503,7 +464,7 @@ function renderCart() {
     </div>
     ${state.offline
       ? `<button class="btn btn-ghost" id="orderViaSupport">${ic('message-circle', 17)} Написать @homonovski</button>`
-      : `<button class="btn" id="checkoutBtn">${icDark('wallet', 17)} Оплатить через CryptoBot</button>`}
+      : `<button class="btn" id="checkoutBtn">${icDark('wallet', 17)} Оплатить</button>`}
     <div class="center small muted mt8">Оплата криптовалютой: USDT, TON, BTC и др.</div>
   `;
 
