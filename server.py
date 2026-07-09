@@ -669,4 +669,22 @@ async def static_or_spa(request, call_next):
         return await call_next(request)
     if path == '/' or not path:
         resp = FileResponse(os.path.join(BASE_DIR, 'webapp', 'index.html'))
-   ver:app', host='0.0.0.0', port=port)
+        resp.headers['Cache-Control'] = 'no-cache'
+        return resp
+    full = os.path.join(BASE_DIR, 'webapp', path.lstrip('/'))
+    if os.path.isfile(full):
+        resp = FileResponse(full)
+        _, ext = os.path.splitext(full)
+        if ext.lower() in CACHE_EXTS:
+            resp.headers['Cache-Control'] = 'no-cache'
+        return resp
+    return FileResponse(os.path.join(BASE_DIR, 'webapp', 'index.html'))
+
+# ============================================================
+# Entry point
+# ============================================================
+
+if __name__ == '__main__':
+    import uvicorn
+    port = int(os.getenv('PORT', 8877))
+    uvicorn.run('server:app', host='0.0.0.0', port=port)
