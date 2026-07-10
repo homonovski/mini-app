@@ -713,9 +713,11 @@ async def pay_create(body: dict, request: Request):
         'confirmation': {'type': 'redirect', 'return_url': return_url},
         'capture': True,
         'description': desc,
-        'payment_method_data': {'type': pay_method},
         'metadata': {'order_id': str(order_id)},
     }
+
+    if pay_method == 'sbp':
+        payload['payment_method_data'] = {'type': 'sbp'}
 
     try:
         async with httpx.AsyncClient() as client:
@@ -735,15 +737,15 @@ async def pay_create(body: dict, request: Request):
         conn.execute("UPDATE orders SET status='error' WHERE id=?", (order_id,))
         conn.commit()
         conn.close()
-        raise HTTPException(500, f'Ошибка ЮKassa: {e}')
+        raise HTTPException(500, f'Ошибка соединения с ЮKassa: {e}')
 
     if resp.status_code not in (200, 201):
         conn = get_db()
         conn.execute("UPDATE orders SET status='error' WHERE id=?", (order_id,))
         conn.commit()
         conn.close()
-        msg = data.get('description', str(data))
-        raise HTTPException(500, f'ЮKassa: {msg}')
+        err_msg = data.get('description', '') or data.get('code', '') or json.dumps(data, ensure_ascii=False)
+        raise HTTPException(500, f'ЮKassa [{resp.status_code}]: {err_msg}')
 
     payment_id = data.get('id', '')
     confirmation_url = data.get('confirmation', {}).get('confirmation_url', '')
