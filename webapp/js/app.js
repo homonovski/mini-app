@@ -367,11 +367,33 @@ async function checkout(items, promoCode) {
     return;
   }
 
-  const itemList = items.map(i => {
+  const subtotal = items.reduce((s, i) => {
     const p = state.products.find(x => x.id === i.id);
-    return p ? `${p.name} ×${i.qty} = ${money(p.price * i.qty)}` : '';
-  }).join('\n');
+    return s + (p ? p.price * i.qty : 0);
+  }, 0);
+  const percent = state.promo ? state.promo.percent : 0;
+  const discount = subtotal * percent / 100;
+  const total = subtotal - discount;
 
+  openSheet(`
+    <div class="pay-wait" style="padding:18px 6px 10px">
+      <div class="empty-icon" style="margin:0 auto">${icMuted('wallet', 36)}</div>
+      <div class="sheet-title">Способ оплаты</div>
+      <div class="muted small" style="margin-bottom:14px">Итого: <b>${money(total)}</b></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn" id="payCard" style="width:100%">${icDark('credit-card', 17)} Банковская карта</button>
+        <button class="btn" id="paySbp" style="width:100%">${icDark('smartphone', 17)} СБП (QR-код)</button>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="payMethodCancel" style="margin-top:12px">Отмена</button>
+    </div>`);
+  haptic('light');
+
+  $('#payMethodCancel').onclick = closeSheet;
+  $('#payCard').onclick = () => createPayment(items, promoCode, 'bank_card');
+  $('#paySbp').onclick = () => createPayment(items, promoCode, 'sbp');
+}
+
+async function createPayment(items, promoCode, method) {
   openSheet(`
     <div class="pay-wait" style="padding:22px 6px 10px">
       <div class="empty-icon" style="margin:0 auto">${icMuted('loader', 36)}</div>
@@ -381,22 +403,37 @@ async function checkout(items, promoCode) {
   haptic('light');
 
   try {
-    const data = await API.post('/api/pay/create', { items, promo: promoCode });
+    const data = await API.post('/api/pay/create', { items, promo: promoCode, payment_method: method });
     const orderId = data.order_id;
     const confirmUrl = data.confirmation_url;
 
-    openSheet(`
-      <div class="pay-wait" style="padding:18px 6px 10px">
-        <div class="empty-icon" style="margin:0 auto">${icMuted('smartphone', 36)}</div>
-        <div class="sheet-title">Оплата через СБП</div>
-        <div class="muted small" style="max-width:280px;margin-bottom:10px">
-          Отсканируйте QR-код в приложении банка или нажмите кнопку ниже
-        </div>
-        <div style="font-size:14px;margin-bottom:6px;color:#aaa">Заказ <span class="mono">#${orderId}</span> · ${money(data.total)}</div>
-        <button class="btn" id="payOpen">${icDark('external-link', 17)} Открыть страницу оплаты</button>
-        <button class="btn btn-ghost" id="payCheck">${ic('refresh-cw', 17)} Проверить оплату</button>
-        <button class="btn btn-ghost btn-sm" id="payCancel">Отмена</button>
-      </div>`);
+    if (method === 'bank_card') {
+      openSheet(`
+        <div class="pay-wait" style="padding:18px 6px 10px">
+          <div class="empty-icon" style="margin:0 auto">${icMuted('credit-card', 36)}</div>
+          <div class="sheet-title">Оплата картой</div>
+          <div class="muted small" style="max-width:280px;margin-bottom:10px">
+            Нажмите кнопку ниже, чтобы перейти на страницу安全ной оплаты
+          </div>
+          <div style="font-size:14px;margin-bottom:6px;color:#aaa">Заказ <span class="mono">#${orderId}</span> · ${money(data.total)}</div>
+          <button class="btn" id="payOpen">${icDark('external-link', 17)} Перейти к оплате</button>
+          <button class="btn btn-ghost" id="payCheck">${ic('refresh-cw', 17)} Проверить оплату</button>
+          <button class="btn btn-ghost btn-sm" id="payCancel">Отмена</button>
+        </div>`);
+    } else {
+      openSheet(`
+        <div class="pay-wait" style="padding:18px 6px 10px">
+          <div class="empty-icon" style="margin:0 auto">${icMuted('smartphone', 36)}</div>
+          <div class="sheet-title">Оплата через СБП</div>
+          <div class="muted small" style="max-width:280px;margin-bottom:10px">
+            Отсканируйте QR-код в приложении банка или нажмите кнопку ниже
+          </div>
+          <div style="font-size:14px;margin-bottom:6px;color:#aaa">Заказ <span class="mono">#${orderId}</span> · ${money(data.total)}</div>
+          <button class="btn" id="payOpen">${icDark('external-link', 17)} Открыть страницу оплаты</button>
+          <button class="btn btn-ghost" id="payCheck">${ic('refresh-cw', 17)} Проверить оплату</button>
+          <button class="btn btn-ghost btn-sm" id="payCancel">Отмена</button>
+        </div>`);
+    }
     haptic('success');
 
     $('#payOpen').onclick = () => openPayUrl(confirmUrl);
