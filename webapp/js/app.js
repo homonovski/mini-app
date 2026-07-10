@@ -340,29 +340,116 @@ async function buyNow(productId, qty) {
 }
 
 async function checkout(items, promoCode) {
-  const support = (state.settings.support || '@homonovski').replace('@', '');
+  if (state.offline) {
+    const support = (state.settings.support || '@homonovski').replace('@', '');
+    const itemList = items.map(i => {
+      const p = state.products.find(x => x.id === i.id);
+      return p ? `${p.name} ×${i.qty} = ${money(p.price * i.qty)}` : '';
+    }).join('\n');
+    const msg = `Здравствуйте! Хочу заказать:\n${itemList}`;
+    openSheet(`
+      <div class="pay-wait" style="padding:22px 6px 10px">
+        <div class="empty-icon" style="margin:0 auto">${icMuted('message-circle', 36)}</div>
+        <div class="sheet-title">Оплата временно недоступна</div>
+        <div class="muted small" style="max-width:280px">Напишите в поддержку — вам помогут оформить заказ</div>
+        <button class="btn" id="paySupport">${icDark('send', 17)} Написать @${support}</button>
+        <button class="btn btn-ghost btn-sm" id="paySupportCancel">Закрыть</button>
+      </div>`);
+    haptic('warning');
+    $('#paySupport').onclick = () => {
+      copyText(msg);
+      openPayUrl('https://t.me/' + support);
+      haptic('medium');
+      toast('Сообщение скопировано');
+      closeSheet();
+    };
+    $('#paySupportCancel').onclick = closeSheet;
+    return;
+  }
+
   const itemList = items.map(i => {
     const p = state.products.find(x => x.id === i.id);
     return p ? `${p.name} ×${i.qty} = ${money(p.price * i.qty)}` : '';
   }).join('\n');
-  const msg = `Здравствуйте! Хочу заказать:\n${itemList}`;
+
   openSheet(`
     <div class="pay-wait" style="padding:22px 6px 10px">
-      <div class="empty-icon" style="margin:0 auto">${icMuted('message-circle', 36)}</div>
-      <div class="sheet-title">Оплата временно недоступна</div>
-      <div class="muted small" style="max-width:280px">Напишите в поддержку — вам помогут оформить заказ</div>
-      <button class="btn" id="paySupport">${icDark('send', 17)} Написать @${support}</button>
-      <button class="btn btn-ghost btn-sm" id="paySupportCancel">Закрыть</button>
+      <div class="empty-icon" style="margin:0 auto">${icMuted('loader', 36)}</div>
+      <div class="sheet-title">Создаём платёж…</div>
+      <div class="muted small">Подождите, идёт запрос к ЮKassa</div>
     </div>`);
-  haptic('warning');
-  $('#paySupport').onclick = () => {
-    copyText(msg);
-    openPayUrl('https://t.me/' + support);
-    haptic('medium');
-    toast('Сообщение скопировано');
-    closeSheet();
-  };
-  $('#paySupportCancel').onclick = closeSheet;
+  haptic('light');
+
+  try {
+    const data = await API.post('/api/pay/create', { items, promo: promoCode });
+    const orderId = data.order_id;
+    const confirmUrl = data.confirmation_url;
+
+    openSheet(`
+      <div class="pay-wait" style="padding:18px 6px 10px">
+        <div class="empty-icon" style="margin:0 auto">${icMuted('smartphone', 36)}</div>
+        <div class="sheet-title">Оплата через СБП</div>
+        <div class="muted small" style="max-width:280px;margin-bottom:10px">
+          Отсканируйте QR-код в приложении банка или нажмите кнопку ниже
+        </div>
+        <div style="font-size:14px;margin-bottom:6px;color:#aaa">Заказ <span class="mono">#${orderId}</span> · ${money(data.total)}</div>
+        <button class="btn" id="payOpen">${icDark('external-link', 17)} Открыть страницу оплаты</button>
+        <button class="btn btn-ghost" id="payCheck">${ic('refresh-cw', 17)} Проверить оплату</button>
+        <button class="btn btn-ghost btn-sm" id="payCancel">Отмена</button>
+      </div>`);
+    haptic('success');
+
+    $('#payOpen').onclick = () => openPayUrl(confirmUrl);
+
+    let polling = true;
+    const poll = async () => {
+      if (!polling) return;
+      try {
+        const result = await API.get('/api/pay/status/' + orderId);
+        if (result.status === 'paid') {
+          polling = false;
+          afterPaid(result);
+          return;
+        }
+      } catch (e) { /* retry */ }
+      if (polling) setTimeout(poll, 3000);
+    };
+    setTimeout(poll, 4000);
+
+    $('#payCheck').onclick = async () => {
+      try {
+        const result = await API.get('/api/pay/status/' + orderId);
+        if (result.status === 'paid') {
+          polling = false;
+          afterPaid(result);
+        } else {
+          toast('Оплата ещё не поступила', true);
+        }
+      } catch (e) {
+        toast(e.message, true);
+      }
+    };
+
+    $('#payCancel').onclick = () => { polling = false; closeSheet(); };
+
+  } catch (e) {
+    haptic('error');
+    const support = (state.settings.support || '@homonovski').replace('@', '');
+    openSheet(`
+      <div class="pay-wait" style="padding:22px 6px 10px">
+        <div class="empty-icon" style="margin:0 auto">${icMuted('circle-alert', 36)}</div>
+        <div class="sheet-title">Ошибка оплаты</div>
+        <div class="muted small" style="max-width:280px">${esc(e.message)}</div>
+        <button class="btn" id="payErrSupport">${icDark('send', 17)} Написать @${support}</button>
+        <button class="btn btn-ghost btn-sm" id="payErrClose">Закрыть</button>
+      </div>`);
+    $('#payErrSupport').onclick = () => {
+      copyText(`Здравствуйте! Проблема с оплатой: ${e.message}`);
+      openPayUrl('https://t.me/' + support);
+      closeSheet();
+    };
+    $('#payErrClose').onclick = closeSheet;
+  }
 }
 
 function openPayUrl(url) {
