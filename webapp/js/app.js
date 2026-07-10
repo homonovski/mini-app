@@ -413,7 +413,7 @@ async function createPayment(items, promoCode, method) {
           <div class="empty-icon" style="margin:0 auto">${icMuted('credit-card', 36)}</div>
           <div class="sheet-title">Оплата картой</div>
           <div class="muted small" style="max-width:280px;margin-bottom:10px">
-            Нажмите кнопку ниже, чтобы перейти на страницу安全ной оплаты
+            Нажмите кнопку ниже, чтобы перейти на страницу оплаты
           </div>
           <div style="font-size:14px;margin-bottom:6px;color:#aaa">Заказ <span class="mono">#${orderId}</span> · ${money(data.total)}</div>
           <button class="btn" id="payOpen">${icDark('external-link', 17)} Перейти к оплате</button>
