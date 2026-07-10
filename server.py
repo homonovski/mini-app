@@ -704,12 +704,16 @@ async def pay_create(body: dict, request: Request):
     return_url = MINI_APP_URL or str(request.base_url).rstrip('/')
     desc = f'Заказ #{order_id}'
 
+    pay_method = body.get('payment_method', 'sbp')
+    if pay_method not in ('sbp', 'bank_card'):
+        pay_method = 'sbp'
+
     payload = {
         'amount': {'value': f'{final:.2f}', 'currency': 'RUB'},
         'confirmation': {'type': 'redirect', 'return_url': return_url},
         'capture': True,
         'description': desc,
-        'payment_method_data': {'type': 'sbp'},
+        'payment_method_data': {'type': pay_method},
         'metadata': {'order_id': str(order_id)},
     }
 
