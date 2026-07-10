@@ -133,7 +133,7 @@ conn = get_db()
 try:
     conn.execute("ALTER TABLE reviews ADD COLUMN status TEXT DEFAULT 'active'")
     conn.commit()
-except:
+except Exception:
     pass
 conn.close()
 
@@ -158,7 +158,7 @@ def verify_telegram_init(data: str) -> dict:
     if user_raw:
         try:
             return json.loads(unquote(user_raw))
-        except:
+        except Exception:
             pass
     return {'id': 0, 'first_name': 'Guest'}
 
@@ -168,7 +168,6 @@ def verify_telegram_init(data: str) -> dict:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -301,50 +300,31 @@ async def create_order(body: dict, request: Request):
             conn.execute('UPDATE promos SET used=used+1 WHERE id=?', (p['id'],))
     final = total - discount
     conn.execute('INSERT INTO orders (user_id, status, total, discount, promo_code) VALUES (?,?,?,?,?)',
-                 (uid, 'paid', final, discount, promo_code or ''))
+                 (uid, 'pending', final, discount, promo_code or ''))
     order_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
     for oi in order_items:
         conn.execute('INSERT INTO order_items (order_id, product_id, name, price, qty) VALUES (?,?,?,?,?)',
                      (order_id, oi['product_id'], oi['name'], oi['price'], oi['qty']))
-    delivery = []
-    for oi in order_items:
-        p = conn.execute('SELECT * FROM products WHERE id=?', (oi['product_id'],)).fetchone()
-        if p and p['delivery_type'] == 'text' and p['content']:
-            delivery.append({'name': p['name'], 'icon': p['icon'], 'qty': oi['qty'],
-                            'content': [p['content']]})
-            conn.execute('UPDATE products SET sales=sales+? WHERE id=?', (oi['qty'], p['id']))
-        elif p and p['delivery_type'] == 'keys':
-            keys = conn.execute('SELECT * FROM stock_keys WHERE product_id=? AND sold=0 LIMIT ?',
-                                (p['id'], oi['qty'])).fetchall()
-            if len(keys) < oi['qty']:
-                conn.close()
-                raise HTTPException(400, f'Недостаточно ключей для {p["name"]}')
-            key_vals = [k['value'] for k in keys]
-            for k in keys:
-                conn.execute('UPDATE stock_keys SET sold=1 WHERE id=?', (k['id'],))
-            delivery.append({'name': p['name'], 'icon': p['icon'], 'qty': oi['qty'], 'content': key_vals})
-            conn.execute('UPDATE products SET sales=sales+? WHERE id=?', (oi['qty'], p['id']))
     conn.execute('UPDATE order_items SET delivery=? WHERE order_id=?',
                  (json.dumps(delivery, ensure_ascii=False), order_id))
-    conn.execute('UPDATE users SET spent=spent+?, first_name=COALESCE(NULLIF(?,\'\'),first_name) WHERE id=?',
-                 (final, user_data.get('first_name', ''), uid))
     conn.commit()
     conn.close()
-    return {'id': order_id, 'status': 'paid', 'total': final, 'pay_url': '', 'delivery': delivery}
+    return {'id': order_id, 'status': 'pending', 'total': final, 'pay_url': '', 'delivery': delivery}
 
 @app.get('/api/orders/{order_id}')
 async def get_order(order_id: int, request: Request):
     await get_user(request)
     conn = get_db()
     o = conn.execute('SELECT * FROM orders WHERE id=?', (order_id,)).fetchone()
-    conn.close()
     if not o:
+        conn.close()
         raise HTTPException(404, 'Заказ не найден')
     items = conn.execute('SELECT * FROM order_items WHERE order_id=?', (order_id,)).fetchall()
     delivery = []
     for item in items:
         if item['delivery']:
-            delivery = json.loads(item['delivery'])
+            delivery.extend(json.loads(item['delivery']))
+    conn.close()
     return {'id': o['id'], 'status': o['status'], 'total': o['total'],
             'pay_url': o['pay_url'], 'delivery': delivery,
             'items': [dict(i) for i in items]}
@@ -361,7 +341,7 @@ async def my_orders(request: Request):
         delivery = []
         for item in items:
             if item['delivery']:
-                delivery = json.loads(item['delivery'])
+                delivery.extend(json.loads(item['delivery']))
         result.append({
             'id': o['id'], 'status': o['status'], 'total': o['total'],
             'pay_url': o['pay_url'], 'created_at': o['created_at'],
@@ -852,7 +832,7 @@ async def pay_status(order_id: int, request: Request):
         items = conn.execute('SELECT * FROM order_items WHERE order_id=?', (order_id,)).fetchall()
         for item in items:
             if item['delivery']:
-                delivery = json.loads(item['delivery'])
+                delivery.extend(json.loads(item['delivery']))
 
     conn.close()
     return {'id': o['id'], 'status': status, 'total': o['total'], 'pay_url': pay_url, 'delivery': delivery}
@@ -923,14 +903,17 @@ async def static_or_spa(request, call_next):
         resp = FileResponse(os.path.join(BASE_DIR, 'webapp', 'index.html'))
         resp.headers['Cache-Control'] = 'no-cache'
         return resp
-    full = os.path.join(BASE_DIR, 'webapp', path.lstrip('/'))
+    webapp_dir = os.path.join(BASE_DIR, 'webapp')
+    full = os.path.normpath(os.path.join(webapp_dir, path.lstrip('/')))
+    if not full.startswith(os.path.normpath(webapp_dir)):
+        return await call_next(request)
     if os.path.isfile(full):
         resp = FileResponse(full)
         _, ext = os.path.splitext(full)
         if ext.lower() in CACHE_EXTS:
             resp.headers['Cache-Control'] = 'no-cache'
         return resp
-    return FileResponse(os.path.join(BASE_DIR, 'webapp', 'index.html'))
+    return FileResponse(os.path.join(webapp_dir, 'index.html'))
 
 # ============================================================
 # Entry point
