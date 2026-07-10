@@ -1,4 +1,4 @@
-import os, sqlite3, json, hmac, hashlib
+import os, sqlite3, json, hmac, hashlib, base64
 from datetime import datetime
 from contextlib import asynccontextmanager
 from urllib.parse import parse_qs, unquote
@@ -8,11 +8,17 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, Response
 
+import httpx
+
 load_dotenv()
 
 BOT_TOKEN = os.getenv('BOT_TOKEN', '')
 ADMIN_IDS = [int(x.strip()) for x in os.getenv('ADMIN_IDS', '0').split(',') if x.strip()]
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///data/shop.db')
+MINI_APP_URL = os.getenv('MINI_APP_URL', '')
+YOOKASSA_SHOP_ID = os.getenv('YOOKASSA_SHOP_ID', '')
+YOOKASSA_SECRET_KEY = os.getenv('YOOKASSA_SECRET_KEY', '')
+YOOKASSA_API = 'https://api.yookassa.ru/v3'
 
 # ============================================================
 # Database
@@ -639,6 +645,246 @@ async def admin_ban_user(uid: int, body: dict, request: Request):
     conn.commit()
     conn.close()
     return {'ok': True}
+
+# ============================================================
+# YuKassa — СБП
+# ============================================================
+
+def yookassa_auth():
+    raw = f'{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}'
+    return 'Basic ' + base64.b64encode(raw.encode()).decode()
+
+@app.post('/api/pay/create')
+async def pay_create(body: dict, request: Request):
+    user_data = await get_user(request)
+    uid = user_data.get('id', 0)
+
+    if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
+        raise HTTPException(500, 'ЮKassa не настроена — добавьте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в .env')
+
+    items = body.get('items', [])
+    promo_code = body.get('promo')
+    if not items:
+        raise HTTPException(400, 'Корзина пуста')
+
+    conn = get_db()
+    total = 0
+    order_items = []
+    for item in items:
+        p = conn.execute('SELECT * FROM products WHERE id=? AND active=1', (item['id'],)).fetchone()
+        if not p:
+            conn.close()
+            raise HTTPException(404, f'Товар {item["id"]} не найден')
+        qty = item.get('qty', 1)
+        price = p['price'] * qty
+        total += price
+        order_items.append({'product_id': p['id'], 'name': p['name'], 'price': p['price'], 'qty': qty})
+
+    discount = 0
+    if promo_code:
+        p = conn.execute('SELECT * FROM promos WHERE code=? AND active=1', (promo_code.upper(),)).fetchone()
+        if p and (not p['max_uses'] or p['used'] < p['max_uses']):
+            discount = total * p['percent'] / 100
+            conn.execute('UPDATE promos SET used=used+1 WHERE id=?', (p['id'],))
+    final = round(total - discount, 2)
+
+    if final <= 0:
+        conn.close()
+        raise HTTPException(400, 'Сумма заказа должна быть больше 0')
+
+    conn.execute('INSERT INTO orders (user_id, status, total, discount, promo_code) VALUES (?,?,?,?,?)',
+                 (uid, 'pending', final, discount, promo_code or ''))
+    order_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    for oi in order_items:
+        conn.execute('INSERT INTO order_items (order_id, product_id, name, price, qty) VALUES (?,?,?,?,?)',
+                     (order_id, oi['product_id'], oi['name'], oi['price'], oi['qty']))
+    conn.commit()
+    conn.close()
+
+    return_url = MINI_APP_URL or str(request.base_url).rstrip('/')
+    desc = f'Заказ #{order_id}'
+
+    payload = {
+        'amount': {'value': f'{final:.2f}', 'currency': 'RUB'},
+        'confirmation': {'type': 'redirect', 'return_url': return_url},
+        'capture': True,
+        'description': desc,
+        'payment_method_data': {'type': 'sbp'},
+        'metadata': {'order_id': str(order_id)},
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f'{YOOKASSA_API}/payments',
+                json=payload,
+                headers={
+                    'Authorization': yookassa_auth(),
+                    'Idempotence-Key': f'order_{order_id}',
+                    'Content-Type': 'application/json',
+                },
+                timeout=15,
+            )
+        data = resp.json()
+    except Exception as e:
+        conn = get_db()
+        conn.execute("UPDATE orders SET status='error' WHERE id=?", (order_id,))
+        conn.commit()
+        conn.close()
+        raise HTTPException(500, f'Ошибка ЮKassa: {e}')
+
+    if resp.status_code not in (200, 201):
+        conn = get_db()
+        conn.execute("UPDATE orders SET status='error' WHERE id=?", (order_id,))
+        conn.commit()
+        conn.close()
+        msg = data.get('description', str(data))
+        raise HTTPException(500, f'ЮKassa: {msg}')
+
+    payment_id = data.get('id', '')
+    confirmation_url = data.get('confirmation', {}).get('confirmation_url', '')
+
+    conn = get_db()
+    conn.execute('UPDATE orders SET invoice_id=?, pay_url=? WHERE id=?',
+                 (payment_id, confirmation_url, order_id))
+    conn.commit()
+    conn.close()
+
+    return {'order_id': order_id, 'payment_id': payment_id, 'confirmation_url': confirmation_url, 'total': final}
+
+
+@app.post('/api/pay/webhook')
+async def pay_webhook(request: Request):
+    raw_body = await request.body()
+    signature = request.headers.get('Content-Signature', '')
+
+    if not YOOKASSA_SECRET_KEY:
+        return JSONResponse({'error': 'not configured'}, status_code=500)
+
+    expected_sig = hashlib.sha256((YOOKASSA_SECRET_KEY + raw_body.decode('utf-8')).encode()).hexdigest()
+    if signature != expected_sig:
+        raise HTTPException(403, 'Invalid signature')
+
+    event = json.loads(raw_body)
+    event_type = event.get('event', '')
+    payment = event.get('object', {})
+    metadata = payment.get('metadata', {})
+    order_id = int(metadata.get('order_id', 0))
+    status = payment.get('status', '')
+
+    if not order_id:
+        return {'ok': True}
+
+    conn = get_db()
+    if event_type == 'payment.succeeded' and status == 'succeeded':
+        o = conn.execute('SELECT * FROM orders WHERE id=?', (order_id,)).fetchone()
+        if o and o['status'] != 'paid':
+            items = conn.execute('SELECT * FROM order_items WHERE order_id=?', (order_id,)).fetchall()
+            for item in items:
+                if item['delivery']:
+                    continue
+                p = conn.execute('SELECT * FROM products WHERE id=?', (item['product_id'],)).fetchone()
+                if p and p['delivery_type'] == 'keys':
+                    keys = conn.execute('SELECT * FROM stock_keys WHERE product_id=? AND sold=0 LIMIT ?',
+                                        (p['id'], item['qty'])).fetchall()
+                    key_vals = []
+                    for k in keys:
+                        conn.execute('UPDATE stock_keys SET sold=1 WHERE id=?', (k['id'],))
+                        key_vals.append(k['value'])
+                    delivery = [{'name': p['name'], 'icon': p['icon'], 'qty': item['qty'], 'content': key_vals}]
+                    conn.execute('UPDATE order_items SET delivery=? WHERE id=?',
+                                 (json.dumps(delivery, ensure_ascii=False), item['id']))
+                    conn.execute('UPDATE products SET sales=sales+? WHERE id=?', (item['qty'], p['id']))
+                elif p and p['delivery_type'] == 'text':
+                    delivery = [{'name': p['name'], 'icon': p['icon'], 'qty': item['qty'],
+                                 'content': [p['content']]}]
+                    conn.execute('UPDATE order_items SET delivery=? WHERE id=?',
+                                 (json.dumps(delivery, ensure_ascii=False), item['id']))
+                    conn.execute('UPDATE products SET sales=sales+? WHERE id=?', (item['qty'], p['id']))
+
+            conn.execute("UPDATE orders SET status='paid' WHERE id=?", (order_id,))
+            conn.execute('UPDATE users SET spent=spent+? WHERE id=?', (o['total'], o['user_id']))
+    elif event_type == 'payment.canceled':
+        conn.execute("UPDATE orders SET status='cancelled' WHERE id=?", (order_id,))
+
+    conn.commit()
+    conn.close()
+    return {'ok': True}
+
+
+@app.get('/api/pay/status/{order_id}')
+async def pay_status(order_id: int, request: Request):
+    user_data = await get_user(request)
+    uid = user_data.get('id', 0)
+    conn = get_db()
+    o = conn.execute('SELECT * FROM orders WHERE id=? AND user_id=?', (order_id, uid)).fetchone()
+    if not o:
+        conn.close()
+        raise HTTPException(404, 'Заказ не найден')
+    status = o['status']
+    pay_url = o['pay_url']
+
+    if status == 'pending' and o['invoice_id'] and YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY:
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f'{YOOKASSA_API}/payments/{o["invoice_id"]}',
+                    headers={'Authorization': yookassa_auth()},
+                    timeout=10,
+                )
+            if resp.status_code == 200:
+                yk_status = resp.json().get('status', '')
+                if yk_status == 'succeeded' and status != 'paid':
+                    import asyncio
+                    asyncio.create_task(_finalize_paid_order(order_id))
+                    status = 'paid'
+        except Exception:
+            pass
+
+    delivery = []
+    if status == 'paid':
+        items = conn.execute('SELECT * FROM order_items WHERE order_id=?', (order_id,)).fetchall()
+        for item in items:
+            if item['delivery']:
+                delivery = json.loads(item['delivery'])
+
+    conn.close()
+    return {'id': o['id'], 'status': status, 'total': o['total'], 'pay_url': pay_url, 'delivery': delivery}
+
+
+async def _finalize_paid_order(order_id: int):
+    """Fallback: finalize order if webhook was missed."""
+    conn = get_db()
+    o = conn.execute('SELECT * FROM orders WHERE id=?', (order_id,)).fetchone()
+    if not o or o['status'] == 'paid':
+        conn.close()
+        return
+    items = conn.execute('SELECT * FROM order_items WHERE order_id=?', (order_id,)).fetchall()
+    for item in items:
+        if item['delivery']:
+            continue
+        p = conn.execute('SELECT * FROM products WHERE id=?', (item['product_id'],)).fetchone()
+        if p and p['delivery_type'] == 'keys':
+            keys = conn.execute('SELECT * FROM stock_keys WHERE product_id=? AND sold=0 LIMIT ?',
+                                (p['id'], item['qty'])).fetchall()
+            key_vals = []
+            for k in keys:
+                conn.execute('UPDATE stock_keys SET sold=1 WHERE id=?', (k['id'],))
+                key_vals.append(k['value'])
+            delivery = [{'name': p['name'], 'icon': p['icon'], 'qty': item['qty'], 'content': key_vals}]
+            conn.execute('UPDATE order_items SET delivery=? WHERE id=?',
+                         (json.dumps(delivery, ensure_ascii=False), item['id']))
+            conn.execute('UPDATE products SET sales=sales+? WHERE id=?', (item['qty'], p['id']))
+        elif p and p['delivery_type'] == 'text':
+            delivery = [{'name': p['name'], 'icon': p['icon'], 'qty': item['qty'],
+                         'content': [p['content']]}]
+            conn.execute('UPDATE order_items SET delivery=? WHERE id=?',
+                         (json.dumps(delivery, ensure_ascii=False), item['id']))
+            conn.execute('UPDATE products SET sales=sales+? WHERE id=?', (item['qty'], p['id']))
+    conn.execute("UPDATE orders SET status='paid' WHERE id=?", (order_id,))
+    conn.execute('UPDATE users SET spent=spent+? WHERE id=?', (o['total'], o['user_id']))
+    conn.commit()
+    conn.close()
 
 @app.get('/api/admin/settings')
 async def admin_get_settings(request: Request):
