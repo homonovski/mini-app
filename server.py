@@ -35,14 +35,42 @@ DB_PATH = os.path.join(BASE_DIR, 'data', 'shop.db')
 os.makedirs(os.path.join(BASE_DIR, 'data'), exist_ok=True)
 
 
+class _PgConn:
+    """Wraps psycopg2 connection so existing SQLite-style code works as-is."""
+    def __init__(self, raw):
+        self._raw = raw
+    def execute(self, sql, params=None):
+        sql = sql.replace('?', '%s')
+        sql = sql.replace('INSERT OR IGNORE INTO', 'INSERT INTO')
+        sql = sql.replace('INSERT OR REPLACE INTO', 'INSERT INTO')
+        cur = self._raw.cursor()
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
+        return cur
+    def executescript(self, script):
+        cur = self._raw.cursor()
+        for s in script.split(';'):
+            s = s.strip()
+            if s:
+                cur.execute(s)
+    def cursor(self):
+        return self._raw.cursor()
+    def commit(self):
+        self._raw.commit()
+    def close(self):
+        self._raw.close()
+
+
 def get_db():
     if USE_PG:
         url = DATABASE_URL
         if 'sslmode' not in url:
             url += ('&' if '?' in url else '?') + 'sslmode=require'
-        conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
-        conn.autocommit = False
-        return conn
+        raw = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
+        raw.autocommit = False
+        return _PgConn(raw)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA journal_mode=WAL')
