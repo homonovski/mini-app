@@ -49,6 +49,8 @@ class _PgConn:
         sql = sql.replace('?', '%s')
         sql = sql.replace('INSERT OR IGNORE INTO', 'INSERT INTO')
         sql = sql.replace('INSERT OR REPLACE INTO', 'INSERT INTO')
+        if params:
+            params = [int(p) if isinstance(p, bool) else p for p in params]
         cur = self._raw.cursor()
         if params:
             cur.execute(sql, params)
