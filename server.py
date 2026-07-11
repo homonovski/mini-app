@@ -37,7 +37,10 @@ os.makedirs(os.path.join(BASE_DIR, 'data'), exist_ok=True)
 
 def get_db():
     if USE_PG:
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        url = DATABASE_URL
+        if 'sslmode' not in url:
+            url += ('&' if '?' in url else '?') + 'sslmode=require'
+        conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
         conn.autocommit = False
         return conn
     conn = sqlite3.connect(DB_PATH)
