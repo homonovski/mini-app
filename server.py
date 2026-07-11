@@ -14,128 +14,247 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv('BOT_TOKEN', '')
 ADMIN_IDS = [int(x.strip()) for x in os.getenv('ADMIN_IDS', '0').split(',') if x.strip()]
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///data/shop.db')
+DATABASE_URL = os.getenv('DATABASE_URL', '')
 MINI_APP_URL = os.getenv('MINI_APP_URL', '')
 YOOKASSA_SHOP_ID = os.getenv('YOOKASSA_SHOP_ID', '')
 YOOKASSA_SECRET_KEY = os.getenv('YOOKASSA_SECRET_KEY', '')
 YOOKASSA_API = 'https://api.yookassa.ru/v3'
 
 # ============================================================
-# Database
+# Database — SQLite (local) / PostgreSQL (Railway)
 # ============================================================
+
+USE_PG = DATABASE_URL.startswith('postgres')
+
+if USE_PG:
+    import psycopg2
+    import psycopg2.extras
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'data', 'shop.db')
 os.makedirs(os.path.join(BASE_DIR, 'data'), exist_ok=True)
 
+
 def get_db():
+    if USE_PG:
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        conn.autocommit = False
+        return conn
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA journal_mode=WAL')
     conn.execute('PRAGMA foreign_keys=ON')
     return conn
 
+
+def _last_id(conn):
+    if USE_PG:
+        cur = conn.cursor()
+        cur.execute('SELECT lastval()')
+        return cur.fetchone()[0]
+    return conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+
+
+SCHEMA_SQLITE = '''
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        icon TEXT DEFAULT 'folder',
+        sort INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        subtitle TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        price REAL NOT NULL,
+        old_price REAL,
+        category_id INTEGER REFERENCES categories(id),
+        icon TEXT DEFAULT 'package',
+        badge TEXT DEFAULT '',
+        delivery_type TEXT DEFAULT 'text',
+        content TEXT DEFAULT '',
+        active INTEGER DEFAULT 1,
+        sort INTEGER DEFAULT 0,
+        sales INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS stock_keys (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER REFERENCES products(id),
+        value TEXT NOT NULL,
+        sold INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY,
+        first_name TEXT DEFAULT '',
+        username TEXT DEFAULT '',
+        photo_url TEXT DEFAULT '',
+        is_banned INTEGER DEFAULT 0,
+        spent REAL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        status TEXT DEFAULT 'pending',
+        total REAL NOT NULL,
+        discount REAL DEFAULT 0,
+        promo_code TEXT DEFAULT '',
+        invoice_id TEXT DEFAULT '',
+        pay_url TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS order_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER REFERENCES orders(id),
+        product_id INTEGER,
+        name TEXT,
+        price REAL,
+        qty INTEGER,
+        delivery TEXT DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        user_name TEXT DEFAULT '',
+        text TEXT NOT NULL,
+        rating INTEGER DEFAULT 5,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_reviews_user_id ON reviews(user_id);
+    CREATE TABLE IF NOT EXISTS promos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT UNIQUE NOT NULL,
+        percent INTEGER NOT NULL,
+        max_uses INTEGER DEFAULT 0,
+        used INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1
+    );
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('shop_name', 'HOMONOVSKI MARKET');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('tagline', 'разработка под ключ');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('currency_symbol', '$');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('support', '@homonovski');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('webapp_url', '');
+'''
+
+SCHEMA_PG = '''
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS categories (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        icon TEXT DEFAULT 'folder',
+        sort INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS products (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        subtitle TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        price DOUBLE PRECISION NOT NULL,
+        old_price DOUBLE PRECISION,
+        category_id INTEGER REFERENCES categories(id),
+        icon TEXT DEFAULT 'package',
+        badge TEXT DEFAULT '',
+        delivery_type TEXT DEFAULT 'text',
+        content TEXT DEFAULT '',
+        active INTEGER DEFAULT 1,
+        sort INTEGER DEFAULT 0,
+        sales INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS stock_keys (
+        id SERIAL PRIMARY KEY,
+        product_id INTEGER REFERENCES products(id),
+        value TEXT NOT NULL,
+        sold INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY,
+        first_name TEXT DEFAULT '',
+        username TEXT DEFAULT '',
+        photo_url TEXT DEFAULT '',
+        is_banned INTEGER DEFAULT 0,
+        spent DOUBLE PRECISION DEFAULT 0,
+        created_at TEXT DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS orders (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        status TEXT DEFAULT 'pending',
+        total DOUBLE PRECISION NOT NULL,
+        discount DOUBLE PRECISION DEFAULT 0,
+        promo_code TEXT DEFAULT '',
+        invoice_id TEXT DEFAULT '',
+        pay_url TEXT DEFAULT '',
+        created_at TEXT DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS order_items (
+        id SERIAL PRIMARY KEY,
+        order_id INTEGER REFERENCES orders(id),
+        product_id INTEGER,
+        name TEXT,
+        price DOUBLE PRECISION,
+        qty INTEGER,
+        delivery TEXT DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS reviews (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        user_name TEXT DEFAULT '',
+        text TEXT NOT NULL,
+        rating INTEGER DEFAULT 5,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_reviews_user_id ON reviews(user_id);
+    CREATE TABLE IF NOT EXISTS promos (
+        id SERIAL PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        percent INTEGER NOT NULL,
+        max_uses INTEGER DEFAULT 0,
+        used INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1
+    );
+    INSERT INTO settings (key, value) VALUES ('shop_name', 'HOMONOVSKI MARKET') ON CONFLICT DO NOTHING;
+    INSERT INTO settings (key, value) VALUES ('tagline', 'разработка под ключ') ON CONFLICT DO NOTHING;
+    INSERT INTO settings (key, value) VALUES ('currency_symbol', '$') ON CONFLICT DO NOTHING;
+    INSERT INTO settings (key, value) VALUES ('support', '@homonovski') ON CONFLICT DO NOTHING;
+    INSERT INTO settings (key, value) VALUES ('webapp_url', '') ON CONFLICT DO NOTHING;
+'''
+
+
 def init_db():
     conn = get_db()
-    conn.executescript('''
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            icon TEXT DEFAULT 'folder',
-            sort INTEGER DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            subtitle TEXT DEFAULT '',
-            description TEXT DEFAULT '',
-            price REAL NOT NULL,
-            old_price REAL,
-            category_id INTEGER REFERENCES categories(id),
-            icon TEXT DEFAULT 'package',
-            badge TEXT DEFAULT '',
-            delivery_type TEXT DEFAULT 'text',
-            content TEXT DEFAULT '',
-            active INTEGER DEFAULT 1,
-            sort INTEGER DEFAULT 0,
-            sales INTEGER DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS stock_keys (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_id INTEGER REFERENCES products(id),
-            value TEXT NOT NULL,
-            sold INTEGER DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
-            first_name TEXT DEFAULT '',
-            username TEXT DEFAULT '',
-            photo_url TEXT DEFAULT '',
-            is_banned INTEGER DEFAULT 0,
-            spent REAL DEFAULT 0,
-            created_at TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            status TEXT DEFAULT 'pending',
-            total REAL NOT NULL,
-            discount REAL DEFAULT 0,
-            promo_code TEXT DEFAULT '',
-            invoice_id TEXT DEFAULT '',
-            pay_url TEXT DEFAULT '',
-            created_at TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS order_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_id INTEGER REFERENCES orders(id),
-            product_id INTEGER,
-            name TEXT,
-            price REAL,
-            qty INTEGER,
-            delivery TEXT DEFAULT ''
-        );
-        CREATE TABLE IF NOT EXISTS reviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            user_name TEXT DEFAULT '',
-            text TEXT NOT NULL,
-            rating INTEGER DEFAULT 5,
-            status TEXT DEFAULT 'active',
-            created_at TEXT DEFAULT (datetime('now'))
-        );
-        CREATE INDEX IF NOT EXISTS idx_reviews_user_id ON reviews(user_id);
-        CREATE TABLE IF NOT EXISTS promos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            code TEXT UNIQUE NOT NULL,
-            percent INTEGER NOT NULL,
-            max_uses INTEGER DEFAULT 0,
-            used INTEGER DEFAULT 0,
-            active INTEGER DEFAULT 1
-        );
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('shop_name', 'HOMONOVSKI MARKET');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('tagline', 'разработка под ключ');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('currency_symbol', '$');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('support', '@homonovski');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('webapp_url', '');
-    ''')
+    if USE_PG:
+        cur = conn.cursor()
+        for stmt in SCHEMA_PG.split(';'):
+            stmt = stmt.strip()
+            if stmt:
+                cur.execute(stmt)
+    else:
+        conn.executescript(SCHEMA_SQLITE)
     conn.commit()
     conn.close()
 
+
 init_db()
 
-# Migration: add status column to reviews if missing
-conn = get_db()
-try:
-    conn.execute("ALTER TABLE reviews ADD COLUMN status TEXT DEFAULT 'active'")
-    conn.commit()
-except Exception:
-    pass
-conn.close()
+if USE_PG:
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'")
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 # ============================================================
 # Telegram Auth
@@ -175,7 +294,6 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
-    allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
 )
@@ -209,8 +327,12 @@ async def get_user(request: Request):
     conn = get_db()
     existing = conn.execute('SELECT * FROM users WHERE id = ?', (uid,)).fetchone()
     if not existing:
-        conn.execute('INSERT OR IGNORE INTO users (id, first_name, username, photo_url) VALUES (?, ?, ?, ?)',
-                     (uid, user_data.get('first_name', ''), user_data.get('username', ''), user_data.get('photo_url', '')))
+        if USE_PG:
+            conn.execute('INSERT INTO users (id, first_name, username, photo_url) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
+                         (uid, user_data.get('first_name', ''), user_data.get('username', ''), user_data.get('photo_url', '')))
+        else:
+            conn.execute('INSERT OR IGNORE INTO users (id, first_name, username, photo_url) VALUES (?, ?, ?, ?)',
+                         (uid, user_data.get('first_name', ''), user_data.get('username', ''), user_data.get('photo_url', '')))
         conn.commit()
     else:
         if existing['is_banned']:
@@ -294,22 +416,20 @@ async def create_order(body: dict, request: Request):
         order_items.append({'product_id': p['id'], 'name': p['name'], 'price': p['price'], 'qty': qty})
     discount = 0
     if promo_code:
-        p = conn.execute('SELECT * FROM promos WHERE code=? AND active=1', (promo_code.upper(),)).fetchone()
-        if p and (not p['max_uses'] or p['used'] < p['max_uses']):
-            discount = total * p['percent'] / 100
-            conn.execute('UPDATE promos SET used=used+1 WHERE id=?', (p['id'],))
+        row = conn.execute('UPDATE promos SET used=used+1 WHERE code=? AND active=1 AND (max_uses=0 OR used<max_uses) RETURNING id, percent',
+                           (promo_code.upper(),)).fetchone()
+        if row:
+            discount = total * row['percent'] / 100
     final = total - discount
     conn.execute('INSERT INTO orders (user_id, status, total, discount, promo_code) VALUES (?,?,?,?,?)',
                  (uid, 'pending', final, discount, promo_code or ''))
-    order_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    order_id = _last_id(conn)
     for oi in order_items:
         conn.execute('INSERT INTO order_items (order_id, product_id, name, price, qty) VALUES (?,?,?,?,?)',
                      (order_id, oi['product_id'], oi['name'], oi['price'], oi['qty']))
-    conn.execute('UPDATE order_items SET delivery=? WHERE order_id=?',
-                 (json.dumps(delivery, ensure_ascii=False), order_id))
     conn.commit()
     conn.close()
-    return {'id': order_id, 'status': 'pending', 'total': final, 'pay_url': '', 'delivery': delivery}
+    return {'id': order_id, 'status': 'pending', 'total': final, 'pay_url': '', 'delivery': []}
 
 @app.get('/api/orders/{order_id}')
 async def get_order(order_id: int, request: Request):
@@ -401,7 +521,8 @@ async def admin_overview(request: Request):
     await require_admin(request)
     conn = get_db()
     revenue = conn.execute("SELECT COALESCE(SUM(total),0) FROM orders WHERE status='paid'").fetchone()[0]
-    rev_today = conn.execute("SELECT COALESCE(SUM(total),0) FROM orders WHERE status='paid' AND date(created_at)=date('now')").fetchone()[0]
+    today_filter = "created_at::date = CURRENT_DATE" if USE_PG else "date(created_at)=date('now')"
+    rev_today = conn.execute(f"SELECT COALESCE(SUM(total),0) FROM orders WHERE status='paid' AND {today_filter}").fetchone()[0]
     orders_paid = conn.execute("SELECT COUNT(*) FROM orders WHERE status='paid'").fetchone()[0]
     orders_pending = conn.execute("SELECT COUNT(*) FROM orders WHERE status='pending'").fetchone()[0]
     users_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
@@ -448,7 +569,7 @@ async def admin_create_product(body: dict, request: Request):
          body.get('old_price'), body.get('category_id'), body.get('icon','package'),
          body.get('badge',''), body.get('delivery_type','text'), body.get('content',''),
          body.get('sort',0), body.get('active',1)))
-    pid = cur.lastrowid
+    pid = _last_id(conn)
     conn.commit()
     conn.close()
     return {'id': pid}
@@ -503,8 +624,9 @@ async def admin_create_category(body: dict, request: Request):
     cur = conn.execute('INSERT INTO categories (name, icon, sort) VALUES (?,?,?)',
                        (body['name'], body.get('icon','folder'), body.get('sort',0)))
     conn.commit()
+    cid = _last_id(conn)
     conn.close()
-    return {'id': cur.lastrowid}
+    return {'id': cid}
 
 @app.put('/api/admin/categories/{cid}')
 async def admin_update_category(cid: int, body: dict, request: Request):
@@ -559,9 +681,10 @@ async def admin_create_promo(body: dict, request: Request):
         cur = conn.execute('INSERT INTO promos (code, percent, max_uses) VALUES (?,?,?)',
                           (body['code'].upper(), body['percent'], body.get('max_uses', 0)))
         conn.commit()
+        pid = _last_id(conn)
         conn.close()
-        return {'id': cur.lastrowid}
-    except sqlite3.IntegrityError:
+        return {'id': pid}
+    except Exception:
         conn.close()
         raise HTTPException(400, 'Промокод уже существует')
 
@@ -662,10 +785,10 @@ async def pay_create(body: dict, request: Request):
 
     discount = 0
     if promo_code:
-        p = conn.execute('SELECT * FROM promos WHERE code=? AND active=1', (promo_code.upper(),)).fetchone()
-        if p and (not p['max_uses'] or p['used'] < p['max_uses']):
-            discount = total * p['percent'] / 100
-            conn.execute('UPDATE promos SET used=used+1 WHERE id=?', (p['id'],))
+        row = conn.execute('UPDATE promos SET used=used+1 WHERE code=? AND active=1 AND (max_uses=0 OR used<max_uses) RETURNING id, percent',
+                           (promo_code.upper(),)).fetchone()
+        if row:
+            discount = total * row['percent'] / 100
     final = round(total - discount, 2)
 
     if final <= 0:
@@ -674,7 +797,7 @@ async def pay_create(body: dict, request: Request):
 
     conn.execute('INSERT INTO orders (user_id, status, total, discount, promo_code) VALUES (?,?,?,?,?)',
                  (uid, 'pending', final, discount, promo_code or ''))
-    order_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    order_id = _last_id(conn)
     for oi in order_items:
         conn.execute('INSERT INTO order_items (order_id, product_id, name, price, qty) VALUES (?,?,?,?,?)',
                      (order_id, oi['product_id'], oi['name'], oi['price'], oi['qty']))
@@ -883,7 +1006,10 @@ async def admin_save_settings(body: dict, request: Request):
     conn = get_db()
     for key in ('shop_name', 'tagline', 'currency_symbol', 'support', 'webapp_url'):
         if key in body:
-            conn.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)', (key, body[key]))
+            if USE_PG:
+                conn.execute('INSERT INTO settings (key, value) VALUES (?,?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', (key, body[key]))
+            else:
+                conn.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)', (key, body[key]))
     conn.commit()
     conn.close()
     return get_settings()
