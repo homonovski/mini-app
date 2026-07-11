@@ -6,32 +6,6 @@ const tg = window.Telegram ? window.Telegram.WebApp : null;
 const IN_TG = !!(tg && tg.initData);
 const ADMIN_IDS = [1061012449];
 
-const SEED_CATEGORIES = [
-  { id: 1, name: 'Боты', icon: 'bot', sort: 1 },
-  { id: 2, name: 'Веб-сайты', icon: 'globe', sort: 2 },
-  { id: 3, name: 'Разработка', icon: 'code', sort: 3 },
-  { id: 4, name: 'Автоматизация', icon: 'cpu', sort: 4 },
-  { id: 5, name: 'Консультации', icon: 'circle-help', sort: 5 },
-];
-
-const SEED_PRODUCTS = [
-  { id: 1, name: 'Telegram-бот для записи клиентов', subtitle: 'Автоматическая запись, напоминания, админ-панель', description: 'Полноценный бот для записи клиентов. Автоматическое подтверждение, напоминания о визите, админ-панель для управления расписанием.', price: 50, icon: 'calendar-clock', category_id: 1, delivery_type: 'text', content: 'Свяжитесь с @homonovski для передачи исходного кода и инструкции по установке.', active: true, sort: 1, badge: '' },
-  { id: 2, name: 'Telegram-бот-консультант', subtitle: 'Ответы на частые вопросы, информация о товарах', description: 'Бот-консультант отвечает на частые вопросы клиентов, выдаёт информацию о товарах и услугах, работает 24/7.', price: 35, icon: 'message-circle', category_id: 1, delivery_type: 'text', content: 'Свяжитесь с @homonovski для получения исходного кода.', active: true, sort: 2, badge: '' },
-  { id: 3, name: 'Telegram-бот для рассылок', subtitle: 'Массовые уведомления, новости, акции', description: 'Сервис массовых рассылок через Telegram. Сегментация подписчиков, статистика доставки, отложенные отправки.', price: 30, icon: 'megaphone', category_id: 1, delivery_type: 'text', content: 'Свяжитесь с @homonovski для получения доступа.', active: true, sort: 3, badge: '' },
-  { id: 4, name: 'Telegram-бот для сбора заявок', subtitle: 'Сбор данных в Google Sheets или CRM', description: 'Бот собирает заявки от клиентов, сохраняет данные в Google Sheets или вашу CRM. Уведомления о новых заявках.', price: 40, icon: 'clipboard-check', category_id: 1, delivery_type: 'text', content: 'После оплаты напишите @homonovski для настройки интеграции.', active: true, sort: 4, badge: '' },
-  { id: 5, name: 'Telegram-бот для интернет-магазина', subtitle: 'Каталог, корзина, оплата через CryptoBot', description: 'Полноценный бот-магазин с каталогом, корзиной и приёмом оплаты через CryptoBot. Аналог нашего Mini App.', price: 100, icon: 'shopping-cart', category_id: 1, delivery_type: 'text', content: 'Свяжитесь с @homonovski для обсуждения деталей.', active: true, sort: 5, badge: 'ХИТ' },
-  { id: 6, name: 'Бот-парсер', subtitle: 'Сбор данных с сайтов по расписанию', description: 'Бот собирает данные с сайтов, маркетплейсов и соцсетей по расписанию и отправляет их вам в Telegram.', price: 60, icon: 'database', category_id: 1, delivery_type: 'text', content: 'После оплаты согласуйте источники данных с @homonovski.', active: true, sort: 6, badge: '' },
-  { id: 7, name: 'Сайт-визитка', subtitle: 'Одностраничный сайт с портфолио', description: 'Современный одностраничный сайт с контактами, портфолио и анимациями. Адаптивный дизайн, быстрая загрузка.', price: 40, icon: 'monitor', category_id: 2, delivery_type: 'text', content: 'Исходный код будет передан после оплаты. Домен и хостинг оплачиваются отдельно.', active: true, sort: 7, badge: '' },
-  { id: 8, name: 'Портфолио-сайт', subtitle: 'С анимациями и 3D-эффектами', description: 'Интерактивный сайт-портфолио с 3D-сценами, частицами и плавными анимациями. Произведёт впечатление на любого клиента.', price: 120, icon: 'layout-dashboard', category_id: 2, delivery_type: 'text', content: 'Свяжитесь с @homonovski для обсуждения дизайн-концепции.', active: true, sort: 8, badge: '' },
-  { id: 9, name: 'Лендинг', subtitle: 'Продающая страница для товара или услуги', description: 'Продающий одностраничный сайт с современным дизайном, формой захвата и аналитикой.', price: 80, icon: 'filter', category_id: 2, delivery_type: 'text', content: 'Цена зависит от сложности. Напишите @homonovski для обсуждения.', active: true, sort: 9, badge: '' },
-  { id: 10, name: 'API (FastAPI / Flask)', subtitle: 'Бэкенд для приложений и ботов', description: 'Разработка серверной части на FastAPI или Flask. REST API, авторизация, база данных, документация Swagger.', price: 70, icon: 'code', category_id: 3, delivery_type: 'text', content: 'Свяжитесь с @homonovski для обсуждения технического задания.', active: true, sort: 10, badge: '' },
-  { id: 11, name: 'Парсинг сайтов', subtitle: 'Сбор данных с маркетплейсов и соцсетей', description: 'Сбор и структурирование данных с любых сайтов. Выгрузка в Excel, CSV, JSON. Регулярные обновления.', price: 55, icon: 'search', category_id: 3, delivery_type: 'text', content: 'После оплаты согласуйте источники и формат данных с @homonovski.', active: true, sort: 11, badge: '' },
-  { id: 12, name: 'Автоматизация Excel / CSV', subtitle: 'Обработка и преобразование табличных данных', description: 'Автоматическая обработка таблиц: объединение, фильтрация, трансформация. Экономит часы ручной работы.', price: 25, icon: 'table', category_id: 4, delivery_type: 'text', content: 'Пришлите пример ваших данных @homonovski после оплаты.', active: true, sort: 12, badge: '' },
-  { id: 13, name: 'Настройка сервера (VPS)', subtitle: 'Установка ботов, БД и окружения', description: 'Полная настройка сервера: установка Python, Node.js, PostgreSQL, Nginx, деплой ботов и приложений.', price: 20, icon: 'server', category_id: 4, delivery_type: 'text', content: 'После оплаты предоставьте доступ к VPS через @homonovski.', active: true, sort: 13, badge: '' },
-  { id: 14, name: 'Админ-панель', subtitle: 'Управление пользователями, заказами и контентом', description: 'Кастомная админ-панель для вашего проекта. Аналитика, управление контентом, пользователями и заказами.', price: 120, icon: 'shield-check', category_id: 5, delivery_type: 'text', content: 'Свяжитесь с @homonovski для обсуждения функционала.', active: true, sort: 14, badge: '' },
-  { id: 15, name: 'Помощь с кодом / консультация', subtitle: 'Разбор ошибок, рефакторинг, помощь с задачами', description: 'Индивидуальная консультация по программированию. Разбор кода, помощь с багами, рефакторинг, code review.', price: 25, icon: 'circle-help', category_id: 5, delivery_type: 'text', content: 'Напишите @homonovski — цена за час консультации.', active: true, sort: 15, badge: '' },
-];
-
 const state = {
   user: null,
   isAdmin: false,
@@ -44,7 +18,6 @@ const state = {
   search: '',
   view: 'home',
   myOrders: [],
-  offline: false,
 };
 
 /* ---------- утилиты ---------- */
@@ -340,33 +313,6 @@ async function buyNow(productId, qty) {
 }
 
 async function checkout(items, promoCode) {
-  if (state.offline) {
-    const support = (state.settings.support || '@homonovski').replace('@', '');
-    const itemList = items.map(i => {
-      const p = state.products.find(x => x.id === i.id);
-      return p ? `${p.name} ×${i.qty} = ${money(p.price * i.qty)}` : '';
-    }).join('\n');
-    const msg = `Здравствуйте! Хочу заказать:\n${itemList}`;
-    openSheet(`
-      <div class="pay-wait" style="padding:22px 6px 10px">
-        <div class="empty-icon" style="margin:0 auto">${icMuted('message-circle', 36)}</div>
-        <div class="sheet-title">Оплата временно недоступна</div>
-        <div class="muted small" style="max-width:280px">Напишите в поддержку — вам помогут оформить заказ</div>
-        <button class="btn" id="paySupport">${icDark('send', 17)} Написать @${support}</button>
-        <button class="btn btn-ghost btn-sm" id="paySupportCancel">Закрыть</button>
-      </div>`);
-    haptic('warning');
-    $('#paySupport').onclick = () => {
-      copyText(msg);
-      openPayUrl('https://t.me/' + support);
-      haptic('medium');
-      toast('Сообщение скопировано');
-      closeSheet();
-    };
-    $('#paySupportCancel').onclick = closeSheet;
-    return;
-  }
-
   const subtotal = items.reduce((s, i) => {
     const p = state.products.find(x => x.id === i.id);
     return s + (p ? p.price * i.qty : 0);
@@ -596,9 +542,7 @@ function renderCart() {
       ${percent ? `<div class="t-row"><span>Скидка ${percent}% (${esc(state.promo.code)})</span><span>−${money(discount)}</span></div>` : ''}
       <div class="t-row total"><span>Итого</span><span>${money(total)}</span></div>
     </div>
-    ${state.offline
-      ? `<button class="btn btn-ghost" id="orderViaSupport">${ic('message-circle', 17)} Написать @homonovski</button>`
-      : `<button class="btn" id="checkoutBtn">${icDark('wallet', 17)} Оплатить</button>`}
+    ${`<button class="btn" id="checkoutBtn">${icDark('wallet', 17)} Оплатить</button>`}
   `;
 
   document.querySelectorAll('.cart-item').forEach((row) => {
@@ -626,25 +570,6 @@ function renderCart() {
     }
     const code = $('#promoInput').value.trim().toUpperCase();
     if (!code) { toast('Введите промокод', true); return; }
-    if (state.offline) {
-      const saved = localStorage.getItem('hm_admin');
-      if (saved) {
-        try {
-          const data = JSON.parse(saved);
-          const p = (data.promos || []).find(x => x.code === code && x.active);
-          if (p && (!p.max_uses || p.used < p.max_uses)) {
-            state.promo = { code: p.code, percent: p.percent };
-            haptic('success');
-            toast(`Промокод применён: −${state.promo.percent}%`);
-            renderCart();
-            return;
-          }
-        } catch (e) {}
-      }
-      haptic('error');
-      toast('Промокод не найден', true);
-      return;
-    }
     try {
       state.promo = await API.post('/api/promo/check', { code });
       haptic('success');
@@ -661,19 +586,6 @@ function renderCart() {
     checkoutBtn.onclick = () => {
       checkout(state.cart.map((i) => ({ id: i.id, qty: i.qty })),
                state.promo ? state.promo.code : null);
-    };
-  }
-
-  const supportBtn = $('#orderViaSupport');
-  if (supportBtn) {
-    supportBtn.onclick = () => {
-      const items = state.cart.map((item) => {
-        const p = state.products.find((x) => x.id === item.id);
-        return p ? `${p.name} ×${item.qty} = ${money(p.price * item.qty)}` : '';
-      }).join('\n');
-      const msg = `Здравствуйте! Хочу заказать:\n${items}\n\nИтого: ${money(total)}`;
-      copyText(msg);
-      toast('Список скопирован — отправьте @homonovski');
     };
   }
 }
@@ -696,20 +608,14 @@ async function renderReviews() {
 
   let publicReviews = [];
   let myReviews = [];
-  if (!state.offline) {
-    try {
-      const data = await API.get('/api/reviews');
-      publicReviews = data.reviews || [];
-    } catch (e) { /* server недоступен */ }
-    try {
-      const data = await API.get('/api/my/reviews');
-      myReviews = data.reviews || [];
-    } catch (e) { /* ignore */ }
-  }
-  if (!publicReviews.length && !myReviews.length) {
-    const saved = localStorage.getItem('hm_reviews');
-    if (saved) { try { publicReviews = JSON.parse(saved); } catch (e) {} }
-  }
+  try {
+    const data = await API.get('/api/reviews');
+    publicReviews = data.reviews || [];
+  } catch (e) { /* server недоступен */ }
+  try {
+    const data = await API.get('/api/my/reviews');
+    myReviews = data.reviews || [];
+  } catch (e) { /* ignore */ }
   const myIds = new Set(myReviews.filter(r => r.status === 'deleted').map(r => r.id));
   const reviews = publicReviews.map(r => ({ ...r, _mine: false, _deleted: false }))
     .concat(myReviews.filter(r => r.status === 'deleted').map(r => ({ ...r, _mine: true, _deleted: true })))
@@ -771,22 +677,7 @@ async function renderReviews() {
       const text = $('#reviewText').value.trim();
       if (!text) { toast('Напишите текст отзыва', true); return; }
       try {
-        if (!state.offline) {
-          await API.post('/api/reviews', { text, rating });
-        }
-        const r = {
-          id: Date.now(),
-          user_id: state.user?.id || 0,
-          user_name: state.user?.first_name || 'Аноним',
-          text,
-          rating,
-          status: 'active',
-          created_at: new Date().toISOString(),
-        };
-        const saved = localStorage.getItem('hm_reviews');
-        const all = saved ? JSON.parse(saved) : [];
-        all.unshift(r);
-        localStorage.setItem('hm_reviews', JSON.stringify(all));
+        await API.post('/api/reviews', { text, rating });
         haptic('success');
         toast('Спасибо за отзыв!');
         closeSheet();
@@ -831,15 +722,6 @@ async function renderProfile() {
     const support = (state.settings.support || 'homonovski').replace('@', '');
     if (support) openPayUrl('https://t.me/' + support);
   };
-
-  if (state.offline) {
-    $('#ordersList').innerHTML = `
-      <div class="empty" style="padding:28px 20px">
-        <div class="empty-icon">${icMuted('package-open', 32)}</div>
-        <div class="empty-text">Для отслеживания заказов подключите серверную часть</div>
-      </div>`;
-    return;
-  }
 
   let orders = [];
   try {
@@ -923,23 +805,6 @@ function initSearch() {
 /* ---------- данные ---------- */
 
 async function refreshShop() {
-  if (state.offline) {
-    const saved = localStorage.getItem('hm_admin');
-    if (saved) {
-      try {
-        const data = JSON.parse(saved);
-        if (data.products && data.products.length) {
-          state.products = data.products;
-          state.categories = data.cats || [];
-        }
-      } catch (e) {}
-    }
-    state.categories.forEach(c => c.count = state.products.filter(p => p.category_id === c.id).length);
-    cleanCart();
-    applyBranding();
-    if (state.view === 'home') renderHome();
-    return;
-  }
   try {
     const shop = await API.get('/api/shop');
     state.categories = shop.categories;
@@ -951,33 +816,6 @@ async function refreshShop() {
   } catch (e) {
     /* silently ignore */
   }
-}
-
-function loadSeedData() {
-  const saved = localStorage.getItem('hm_admin');
-  if (saved) {
-    try {
-      const data = JSON.parse(saved);
-      if (data.products && data.products.length) {
-        state.products = data.products;
-        state.categories = data.cats || [];
-        const s = localStorage.getItem('hm_settings');
-        if (s) Object.assign(state.settings, JSON.parse(s));
-        cleanCart();
-        return;
-      }
-    } catch (e) {}
-  }
-  state.categories = SEED_CATEGORIES.map((c) => ({
-    ...c,
-    count: SEED_PRODUCTS.filter((p) => p.category_id === c.id).length,
-  }));
-  state.products = SEED_PRODUCTS;
-  const s = localStorage.getItem('hm_settings');
-  if (s) {
-    state.settings = { ...state.settings, ...JSON.parse(s) };
-  }
-  cleanCart();
 }
 
 function applyBranding() {
@@ -1019,25 +857,8 @@ async function boot() {
     auth = await API.post('/api/auth');
   } catch (e) {
     if (e.status === 403) fatal('ban', 'Доступ ограничен', e.message);
-    else {
-      /* сервер недоступен — загружаем seed данные для просмотра */
-      state.offline = true;
-      loadSeedData();
-      if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-        const u = tg.initDataUnsafe.user;
-        state.user = { id: u.id, first_name: u.first_name || '', username: u.username || '', photo_url: u.photo_url || '' };
-        state.isAdmin = ADMIN_IDS.includes(u.id);
-      } else {
-        state.user = { id: 0, first_name: 'Гость' };
-        state.isAdmin = false;
-      }
-      loadCart();
-      applyBranding();
-      renderNav();
-      renderHome();
-      setTimeout(() => $('#splash').classList.add('done'), 350);
-      return;
-    }
+    else fatal('wifi-off', 'Сервер недоступен', 'Откройте мини-апп через Telegram-бота');
+    return;
   }
   state.user = auth.user;
   state.isAdmin = auth.is_admin;
@@ -1047,7 +868,6 @@ async function boot() {
   try {
     await refreshShop();
   } catch (e) {
-    loadSeedData();
     applyBranding();
     renderNav();
     renderHome();
