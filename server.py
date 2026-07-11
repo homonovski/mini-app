@@ -29,6 +29,12 @@ USE_PG = DATABASE_URL.startswith('postgres')
 if USE_PG:
     import psycopg2
     import psycopg2.extras
+    _orig_rdr = psycopg2.extras.RealDictRow.__getitem__
+    def _rdr_getitem(self, key):
+        if isinstance(key, int):
+            return list(self.values())[key]
+        return _orig_rdr(self, key)
+    psycopg2.extras.RealDictRow.__getitem__ = _rdr_getitem
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'data', 'shop.db')
