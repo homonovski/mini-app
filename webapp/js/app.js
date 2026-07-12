@@ -218,7 +218,9 @@ function productCard(p) {
 }
 
 function renderHome() {
-  const cats = state.categories.filter((c) => c.count > 0);
+  const cats = state.categories
+    .map((c) => ({ ...c, count: state.products.filter((p) => p.category_id === c.id).length }))
+    .filter((c) => c.count > 0);
   const list = visibleProducts();
   $('#view-home').innerHTML = `
     <div class="chips" id="chips">
